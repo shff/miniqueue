@@ -1,12 +1,12 @@
 [package]
 name = "miniqueue"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Silvio Henrique Ferreira <shferreira@me.com>"]
 edition = "2018"
 
 description = "A minimalistic single-thread job queue based on fold/reduce"
 documentation = "https://docs.rs/miniqueue"
-repository = "https://github.com/shff/paq"
+repository = "https://github.com/shff/miniqueue"
 readme = "README.md"
 license = "MIT"
 
