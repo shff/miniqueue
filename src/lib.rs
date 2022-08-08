@@ -1,16 +1,17 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
+use std::panic::{catch_unwind, RefUnwindSafe, UnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread::{spawn, yield_now};
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
-pub fn run<A, B, F>(first_job: A, mut perform: F) -> Result<HashMap<A, B>, Error>
+pub fn run<A, B, F>(first_job: A, perform: F) -> Result<HashMap<A, B>, Error>
 where
-    A: 'static + Clone + Eq + Hash + Send + Sync,
-    B: 'static + Clone + Send,
-    F: 'static + Send + Copy + FnMut(A) -> Result<(B, Vec<A>), Error>,
+    A: 'static + Clone + Eq + Hash + Send + Sync + UnwindSafe + RefUnwindSafe,
+    B: 'static + Clone + Send + UnwindSafe,
+    F: 'static + Send + Copy + UnwindSafe + RefUnwindSafe + Fn(A) -> Result<(B, Vec<A>), Error>,
 {
     let mut pending = HashSet::<A>::new();
     let finished = Arc::new(AtomicBool::new(false));
@@ -26,7 +27,9 @@ where
         spawn(move || loop {
             match queue.write().unwrap().pop_front() {
                 Some(job) => {
-                    tx.send((job.clone(), perform(job))).unwrap()
+                    let panik = Box::new(std::io::Error::new(std::io::ErrorKind::Other, "panic"));
+                    let result = catch_unwind(|| perform(job.clone())).unwrap_or(Err(panik));
+                    tx.send((job, result)).unwrap()
                 }
                 None if finished.load(Ordering::Relaxed) => return,
                 None => yield_now(),
@@ -91,6 +94,12 @@ fn test_queue() {
     let result = run(1, |num| match num {
         1 => Ok(("one", vec![2])),
         _ => Err(Box::new(std::fmt::Error)),
+    });
+    assert_eq!(result.is_err(), true);
+
+    let result = run(1, |num| match num {
+        1 => Ok(("one", vec![2])),
+        _ => panic!("panic"),
     });
     assert_eq!(result.is_err(), true);
 }
